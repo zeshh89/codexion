@@ -4,7 +4,7 @@ SRC = main.c parsing.c
 OBJ = $(SRC:.c=.o)
 
 CC = cc
-CFLAGS = -Wall -Wextra -Werror -pthread
+CFLAGS = -Wall -Wextra -Werror -pthread -D_POSIX_C_SOURCE=200809L
 
 all: $(NAME)
 

@@ -2,7 +2,7 @@
 #include <string.h>
 #include "parsing.h"
 
-#define MAX_LONG 2147483647L /* limite razonable para args de este proyecto */
+#define MAX_LONG 2147483647L
 
 static int is_all_digits(const char *s)
 {
