@@ -4,6 +4,8 @@
 #include <pthread.h>
 #include "heap.h"
 
+struct s_sim;
+
 typedef struct s_dongle
 {
     int             id;
@@ -17,9 +19,9 @@ typedef struct s_dongle
 int     dongle_init(t_dongle *dongle, int id, t_heap_cmp cmp);
 void    dongle_destroy(t_dongle *dongle);
 
-
 int     dongle_acquire(
             t_dongle *dongle,
+            struct s_sim *sim,
             int coder_id,
             long request_time,
             long deadline

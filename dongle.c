@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include "dongle.h"
+#include "simulation.h"  /* aca si, para acceder a sim->stop y status_mutex */
 #include "time_utils.h"
 
 int dongle_init(t_dongle *dongle, int id, t_heap_cmp cmp)
@@ -38,8 +39,36 @@ static int is_my_turn(t_dongle *dongle, int coder_id)
     return (dongle->waiters.data[0].coder_id == coder_id);
 }
 
+static int sim_should_stop(struct s_sim *sim)
+{
+    int stop;
+
+    pthread_mutex_lock(&sim->status_mutex);
+    stop = sim->stop;
+    pthread_mutex_unlock(&sim->status_mutex);
+    return (stop);
+}
+
+
+static void remove_from_waiters(t_dongle *dongle, int coder_id)
+{
+    t_heap  tmp;
+    t_heap_node node;
+
+    heap_init(&tmp, dongle->waiters.cmp);
+    while (!heap_is_empty(&dongle->waiters))
+    {
+        heap_pop(&dongle->waiters, &node);
+        if (node.coder_id != coder_id)
+            heap_push(&tmp, node);
+    }
+    heap_destroy(&dongle->waiters);
+    dongle->waiters = tmp;
+}
+
 int dongle_acquire(
     t_dongle *dongle,
+    struct s_sim *sim,
     int coder_id,
     long request_time,
     long deadline
@@ -59,15 +88,25 @@ int dongle_acquire(
         pthread_mutex_unlock(&dongle->mutex);
         return (-1);
     }
-    while (dongle->in_use || !is_my_turn(dongle, coder_id))
+    while (!sim_should_stop(sim)
+        && (dongle->in_use || !is_my_turn(dongle, coder_id)))
         pthread_cond_wait(&dongle->cond, &dongle->mutex);
 
-    while (get_absolute_ms() < dongle->available_since)
+    while (!sim_should_stop(sim)
+        && get_absolute_ms() < dongle->available_since)
     {
         ms_to_timespec(dongle->available_since, &ts);
         pthread_cond_timedwait(&dongle->cond, &dongle->mutex, &ts);
-        while (dongle->in_use || !is_my_turn(dongle, coder_id))
+        while (!sim_should_stop(sim)
+            && (dongle->in_use || !is_my_turn(dongle, coder_id)))
             pthread_cond_wait(&dongle->cond, &dongle->mutex);
+    }
+
+    if (sim_should_stop(sim))
+    {
+        remove_from_waiters(dongle, coder_id);
+        pthread_mutex_unlock(&dongle->mutex);
+        return (-1);
     }
 
     heap_pop(&dongle->waiters, &popped);

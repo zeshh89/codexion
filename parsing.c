@@ -60,12 +60,12 @@ static int parse_scheduler(const char *arg, t_scheduler *out)
 {
     if (strcmp(arg, "fifo") == 0)
     {
-        *out = SCHED_FIFO;
+        *out = SCHEDULER_FIFO;
         return (0);
     }
     if (strcmp(arg, "edf") == 0)
     {
-        *out = SCHED_EDF;
+        *out = SCHEDULER_EDF;
         return (0);
     }
     fprintf(stderr,

@@ -1,106 +1,74 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <pthread.h>
-#include "dongle.h"
-#include "heap.h"
-#include "time_utils.h"
+#include "parsing.h"
+#include "simulation.h"
+#include "coder.h"
+#include "monitor.h"
 
-typedef struct s_test_ctx
+static int launch_threads(t_sim *sim, pthread_t *monitor_thread)
 {
-    t_dongle        *dongle;
-    long            start_time;
-    long            hold_ms;
-    long            cooldown_ms;
-    int             iterations;
-    pthread_mutex_t *log_mutex;
-}   t_test_ctx;
+    int i;
+    int n;
 
-typedef struct s_thread_arg
-{
-    t_test_ctx  *ctx;
-    int         coder_id;
-}   t_thread_arg;
-
-static void log_line(pthread_mutex_t *log_mutex, long start_time,
-                        int coder_id, const char *action)
-{
-    pthread_mutex_lock(log_mutex);
-    printf("%ld %d %s\n", get_relative_ms(start_time), coder_id, action);
-    pthread_mutex_unlock(log_mutex);
+    n = sim->params.number_of_coders;
+    if (pthread_create(monitor_thread, NULL, monitor_routine, sim) != 0)
+        return (-1);
+    i = 0;
+    while (i < n)
+    {
+        if (pthread_create(&sim->coders[i].thread, NULL,
+                coder_routine, &sim->coders[i]) != 0)
+            return (-1);
+        i++;
+    }
+    return (0);
 }
 
-static void *coder_routine(void *arg)
+static void join_all(t_sim *sim, pthread_t monitor_thread)
 {
-    t_thread_arg    *targ;
-    t_test_ctx      *ctx;
-    long            request_time;
-    long            release_time;
-    int             i;
+    int i;
+    int n;
 
-    targ = (t_thread_arg *)arg;
-    ctx = targ->ctx;
+    n = sim->params.number_of_coders;
     i = 0;
-    while (i < ctx->iterations)
+    while (i < n)
     {
-        request_time = get_absolute_ms();
-        log_line(ctx->log_mutex, ctx->start_time, targ->coder_id,
-            "requesting dongle");
-
-        dongle_acquire(ctx->dongle, targ->coder_id, request_time, 0);
-
-        log_line(ctx->log_mutex, ctx->start_time, targ->coder_id,
-            "acquired dongle");
-
-        usleep(ctx->hold_ms * 1000);
-
-        release_time = get_absolute_ms();
-        dongle_release(ctx->dongle, release_time, ctx->cooldown_ms);
-
-        log_line(ctx->log_mutex, ctx->start_time, targ->coder_id,
-            "released dongle");
-
+        pthread_join(sim->coders[i].thread, NULL);
         i++;
     }
-    return (NULL);
+    pthread_mutex_lock(&sim->status_mutex);
+    sim->stop = 1;
+    pthread_mutex_unlock(&sim->status_mutex);
+    pthread_join(monitor_thread, NULL);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
-    t_dongle        dongle;
-    pthread_mutex_t log_mutex;
-    t_test_ctx      ctx;
-    t_thread_arg    args[3];
-    pthread_t       threads[3];
-    int             i;
+    t_params    params;
+    t_sim       sim;
+    pthread_t   monitor_thread;
 
-    dongle_init(&dongle, 1, cmp_fifo);
-    pthread_mutex_init(&log_mutex, NULL);
+    if (parse_args(argc, argv, &params) != 0)
+        return (1);
 
-    ctx.dongle = &dongle;
-    ctx.start_time = get_absolute_ms();
-    ctx.hold_ms = 200;
-    ctx.cooldown_ms = 300;
-    ctx.iterations = 2;
-    ctx.log_mutex = &log_mutex;
-
-    i = 0;
-    while (i < 3)
+    if (sim_init(&sim, &params) != 0)
     {
-        args[i].ctx = &ctx;
-        args[i].coder_id = i + 1;
-        pthread_create(&threads[i], NULL, coder_routine, &args[i]);
-        i++;
+        fprintf(stderr, "Error: failed to initialize simulation\n");
+        sim_destroy(&sim);
+        return (1);
     }
 
-    i = 0;
-    while (i < 3)
+    if (launch_threads(&sim, &monitor_thread) != 0)
     {
-        pthread_join(threads[i], NULL);
-        i++;
+        fprintf(stderr, "Error: failed to create threads\n");
+        pthread_mutex_lock(&sim.status_mutex);
+        sim.stop = 1;
+        pthread_mutex_unlock(&sim.status_mutex);
+        sim_destroy(&sim);
+        return (1);
     }
 
-    pthread_mutex_destroy(&log_mutex);
-    dongle_destroy(&dongle);
+    join_all(&sim, monitor_thread);
+    sim_destroy(&sim);
     return (0);
 }
