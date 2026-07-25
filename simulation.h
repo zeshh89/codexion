@@ -1,9 +1,21 @@
-#ifndef SIMULATION_H
-#define SIMULATION_H
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   simulation.h                                       :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: jose-an2 <jose-an2@student.42barcelon      +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/07/25 11:39:01 by jose-an2          #+#    #+#             */
+/*   Updated: 2026/07/25 11:39:14 by jose-an2         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
 
-#include <pthread.h>
-#include "parsing.h"
-#include "dongle.h"
+#ifndef SIMULATION_H
+# define SIMULATION_H
+
+# include <pthread.h>
+# include "parsing.h"
+# include "dongle.h"
 
 typedef enum e_coder_state
 {

@@ -1,125 +1,70 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   coder.c                                            :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: jose-an2 <jose-an2@student.42barcelon      +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/07/25 11:31:10 by jose-an2          #+#    #+#             */
+/*   Updated: 2026/07/25 11:31:18 by jose-an2         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 #include <unistd.h>
 #include "coder.h"
 #include "time_utils.h"
 
-static int should_stop(t_sim *sim)
+static void	do_compile(t_coder *coder)
 {
-    int stop;
+	long	now;
 
-    pthread_mutex_lock(&sim->status_mutex);
-    stop = sim->stop;
-    pthread_mutex_unlock(&sim->status_mutex);
-    return (stop);
+	now = get_absolute_ms();
+	coder_mark_compile_start(coder, now);
+	log_event(coder->sim, coder->id, "is compiling");
+	usleep(coder->sim->params.time_to_compile * 1000);
+	coder_release_both_dongles(coder, get_absolute_ms());
+	pthread_mutex_lock(&coder->sim->status_mutex);
+	coder->compiles_done++;
+	pthread_mutex_unlock(&coder->sim->status_mutex);
 }
 
-static long get_deadline(t_coder *coder)
+static void	do_debug_and_refactor(t_coder *coder)
 {
-    long    last_start;
-
-    pthread_mutex_lock(&coder->sim->status_mutex);
-    last_start = coder->last_compile_start;
-    pthread_mutex_unlock(&coder->sim->status_mutex);
-    return (last_start + coder->sim->params.time_to_burnout);
+	coder_set_state(coder, STATE_DEBUGGING);
+	log_event(coder->sim, coder->id, "is debugging");
+	usleep(coder->sim->params.time_to_debug * 1000);
+	if (coder_should_stop(coder->sim))
+		return ;
+	coder_set_state(coder, STATE_REFACTORING);
+	log_event(coder->sim, coder->id, "is refactoring");
+	usleep(coder->sim->params.time_to_refactor * 1000);
 }
 
-static int acquire_both_dongles(t_coder *coder, long request_time)
+static int	run_one_cycle(t_coder *coder)
 {
-    long    deadline;
+	long	request_time;
 
-    deadline = get_deadline(coder);
-    if (dongle_acquire(coder->dongle_a, coder->sim, coder->id,
-            request_time, deadline) != 0)
-        return (-1);
-    log_event(coder->sim, coder->id, "has taken a dongle");
-
-    if (coder->dongle_a != coder->dongle_b)
-    {
-        if (dongle_acquire(coder->dongle_b, coder->sim, coder->id,
-                request_time, deadline) != 0)
-        {
-            dongle_release(coder->dongle_a, get_absolute_ms(),
-                coder->sim->params.dongle_cooldown);
-            return (-1);
-        }
-        log_event(coder->sim, coder->id, "has taken a dongle");
-    }
-    return (0);
+	request_time = get_absolute_ms();
+	if (coder_acquire_both_dongles(coder, request_time) != 0)
+		return (-1);
+	do_compile(coder);
+	if (coder_should_stop(coder->sim))
+		return (-1);
+	do_debug_and_refactor(coder);
+	return (0);
 }
 
-static void release_both_dongles(t_coder *coder, long release_time)
+void	*coder_routine(void *arg)
 {
-    long cooldown;
+	t_coder	*coder;
 
-    cooldown = coder->sim->params.dongle_cooldown;
-    dongle_release(coder->dongle_a, release_time, cooldown);
-    if (coder->dongle_a != coder->dongle_b)
-        dongle_release(coder->dongle_b, release_time, cooldown);
-}
-
-static void mark_compile_start(t_coder *coder, long now)
-{
-    pthread_mutex_lock(&coder->sim->status_mutex);
-    coder->last_compile_start = now;
-    coder->state = STATE_COMPILING;
-    pthread_mutex_unlock(&coder->sim->status_mutex);
-}
-
-static void set_state(t_coder *coder, t_coder_state state)
-{
-    pthread_mutex_lock(&coder->sim->status_mutex);
-    coder->state = state;
-    pthread_mutex_unlock(&coder->sim->status_mutex);
-}
-
-static int compiles_left(t_coder *coder)
-{
-    int done;
-
-    pthread_mutex_lock(&coder->sim->status_mutex);
-    done = coder->compiles_done;
-    pthread_mutex_unlock(&coder->sim->status_mutex);
-    return (done < coder->sim->params.number_of_compiles_required);
-}
-
-void *coder_routine(void *arg)
-{
-    t_coder *coder;
-    long    request_time;
-    long    now;
-
-    coder = (t_coder *)arg;
-    while (!should_stop(coder->sim) && compiles_left(coder))
-    {
-        request_time = get_absolute_ms();
-        if (acquire_both_dongles(coder, request_time) != 0)
-            break;
-
-        now = get_absolute_ms();
-        mark_compile_start(coder, now);
-        log_event(coder->sim, coder->id, "is compiling");
-        usleep(coder->sim->params.time_to_compile * 1000);
-
-        release_both_dongles(coder, get_absolute_ms());
-
-        pthread_mutex_lock(&coder->sim->status_mutex);
-        coder->compiles_done++;
-        pthread_mutex_unlock(&coder->sim->status_mutex);
-
-        if (should_stop(coder->sim))
-            break;
-
-        set_state(coder, STATE_DEBUGGING);
-        log_event(coder->sim, coder->id, "is debugging");
-        usleep(coder->sim->params.time_to_debug * 1000);
-
-        if (should_stop(coder->sim))
-            break;
-
-        set_state(coder, STATE_REFACTORING);
-        log_event(coder->sim, coder->id, "is refactoring");
-        usleep(coder->sim->params.time_to_refactor * 1000);
-    }
-    if (!should_stop(coder->sim))
-        set_state(coder, STATE_FINISHED);
-    return (NULL);
+	coder = (t_coder *)arg;
+	while (!coder_should_stop(coder->sim) && coder_compiles_left(coder))
+	{
+		if (run_one_cycle(coder) != 0)
+			break ;
+	}
+	if (!coder_should_stop(coder->sim))
+		coder_set_state(coder, STATE_FINISHED);
+	return (NULL);
 }
