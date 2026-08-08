@@ -13,19 +13,27 @@
 #include "coder.h"
 #include "time_utils.h"
 
+static t_heap_node	build_request(t_coder *coder, long request_time)
+{
+	t_heap_node	node;
+
+	node.coder_id = coder->id;
+	node.request_time = request_time;
+	node.deadline = coder_get_deadline(coder);
+	return (node);
+}
+
 int	coder_acquire_both_dongles(t_coder *coder, long request_time)
 {
-	long	deadline;
+	t_heap_node	node;
 
-	deadline = coder_get_deadline(coder);
-	if (dongle_acquire(coder->dongle_a, coder->sim, coder->id,
-			request_time, deadline) != 0)
+	node = build_request(coder, request_time);
+	if (dongle_acquire(coder->dongle_a, coder->sim, node) != 0)
 		return (-1);
 	log_event(coder->sim, coder->id, "has taken a dongle");
 	if (coder->dongle_a != coder->dongle_b)
 	{
-		if (dongle_acquire(coder->dongle_b, coder->sim, coder->id,
-				request_time, deadline) != 0)
+		if (dongle_acquire(coder->dongle_b, coder->sim, node) != 0)
 		{
 			dongle_release(coder->dongle_a, get_absolute_ms(),
 				coder->sim->params.dongle_cooldown);

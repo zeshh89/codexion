@@ -15,7 +15,6 @@
 
 # include "simulation.h"
 
-int		coder_should_stop(t_sim *sim);
 long	coder_get_deadline(t_coder *coder);
 void	coder_mark_compile_start(t_coder *coder, long now);
 void	coder_set_state(t_coder *coder, t_coder_state state);

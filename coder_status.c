@@ -12,16 +12,6 @@
 
 #include "coder.h"
 
-int	coder_should_stop(t_sim *sim)
-{
-	int	stop;
-
-	pthread_mutex_lock(&sim->status_mutex);
-	stop = sim->stop;
-	pthread_mutex_unlock(&sim->status_mutex);
-	return (stop);
-}
-
 long	coder_get_deadline(t_coder *coder)
 {
 	long	last_start;

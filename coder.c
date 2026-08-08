@@ -33,7 +33,7 @@ static void	do_debug_and_refactor(t_coder *coder)
 	coder_set_state(coder, STATE_DEBUGGING);
 	log_event(coder->sim, coder->id, "is debugging");
 	usleep(coder->sim->params.time_to_debug * 1000);
-	if (coder_should_stop(coder->sim))
+	if (sim_is_stopped(coder->sim))
 		return ;
 	coder_set_state(coder, STATE_REFACTORING);
 	log_event(coder->sim, coder->id, "is refactoring");
@@ -48,7 +48,7 @@ static int	run_one_cycle(t_coder *coder)
 	if (coder_acquire_both_dongles(coder, request_time) != 0)
 		return (-1);
 	do_compile(coder);
-	if (coder_should_stop(coder->sim))
+	if (sim_is_stopped(coder->sim))
 		return (-1);
 	do_debug_and_refactor(coder);
 	return (0);
@@ -59,12 +59,12 @@ void	*coder_routine(void *arg)
 	t_coder	*coder;
 
 	coder = (t_coder *)arg;
-	while (!coder_should_stop(coder->sim) && coder_compiles_left(coder))
+	while (!sim_is_stopped(coder->sim) && coder_compiles_left(coder))
 	{
 		if (run_one_cycle(coder) != 0)
 			break ;
 	}
-	if (!coder_should_stop(coder->sim))
+	if (!sim_is_stopped(coder->sim))
 		coder_set_state(coder, STATE_FINISHED);
 	return (NULL);
 }
