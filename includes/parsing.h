@@ -31,5 +31,8 @@ typedef struct s_params
 }	t_params;
 
 int	parse_args(int argc, char **argv, t_params *params);
+int	parse_strict_long(const char *arg, const char *name, long *out);
+int	parse_scheduler(const char *arg, t_scheduler *out);
+int	check_semantics(const t_params *p);
 
 #endif
